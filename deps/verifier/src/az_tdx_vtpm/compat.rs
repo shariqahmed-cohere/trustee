@@ -58,6 +58,20 @@ pub(super) enum Evidence {
     V0(EvidenceV0),
 }
 
+/// v0 evidence carries the attester's own `vtpm::Quote`, whose fields are
+/// private. This conversion lives here rather than beside `TpmQuote` because
+/// the type comes from `az-cvm-vtpm`'s `tpm` feature, which links libtss2 --
+/// something only the TDX path pulls in.
+impl From<Quote> for TpmQuote {
+    fn from(quote: Quote) -> Self {
+        TpmQuote {
+            signature: quote.signature(),
+            message: quote.message(),
+            pcrs: quote.pcrs_sha256().map(|p| p.to_vec()).collect(),
+        }
+    }
+}
+
 impl Evidence {
     pub(super) fn hcl_report(&self) -> &[u8] {
         match self {

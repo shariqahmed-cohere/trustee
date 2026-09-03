@@ -36,12 +36,13 @@ sgx-verifier = [
     "tokio/sync",
 ]
 az-snp-vtpm-verifier = [
-    "az-snp-vtpm",
+    "az-cvm-vtpm",
     "eventlog",
+    "openssl",
     "serde_with",
     "sev",
     "snp-verifier",
-    "tss-esapi",
+    "tpm2-protocol",
 ]
 az-tdx-vtpm-verifier = [
     "az-snp-vtpm-verifier",
@@ -56,7 +57,7 @@ hygon-dcu-verifier = ["csv-rs"]
 cca-verifier = ["ear", "jsonwebtoken", "veraison-apiclient", "ccatoken"]
 se-verifier = ["openssl", "pv", "serde_with", "tokio/sync"]
 nvidia-verifier = ["jsonwebtoken", "asn1-rs", "openssl", "x509-parser"]
-tpm-verifier = ["az-cvm-vtpm", "openssl", "tss-esapi"]
+tpm-verifier = ["az-cvm-vtpm/verifier", "openssl", "tss-esapi"]
 nvidia-dpu-verifier = ["p384", "serde_with", "x509-parser"]
 
 [dependencies]
@@ -64,12 +65,11 @@ anyhow.workspace = true
 thiserror.workspace = true
 asn1-rs = { version = "0.7.2", optional = true }
 async-trait.workspace = true
-az-snp-vtpm = { version = "0.8.1", default-features = false, features = [
-    "verifier",
-], optional = true }
-az-cvm-vtpm = { version = "0.8.1", default-features = false, features = [
-    "verifier",
-], optional = true }
+# Declared with no features on purpose. `hcl` is ungated, but every other
+# module -- and the `verifier`/`attester`/`tpm` features -- pull `tss-esapi`,
+# whose -sys crate only builds where libtss2 is present. `tpm-verifier` opts
+# into `verifier` explicitly; `az-snp-vtpm-verifier` takes just the HCL parser.
+az-cvm-vtpm = { version = "0.8.1", default-features = false, optional = true }
 az-tdx-vtpm = { version = "0.8.1", default-features = false, features = [
     "verifier",
 ], optional = true }
@@ -125,6 +125,11 @@ url = "2.5.7"
 bitflags = { version = "2.13.0", features = ["serde"] }
 time.workspace = true
 tss-esapi = { version = "7.5", optional = true }
+# Pure-Rust, dependency-free TPM 2.0 marshalling, used to parse `TPMS_ATTEST`
+# out of an Azure vTPM quote without linking libtss2. Pinned exactly because
+# it declares edition 2024 and tracks a recent MSRV, so a minor bump could
+# outrun the toolchain this workspace builds with.
+tpm2-protocol = { version = "=1.0.2", optional = true }
 
 [build-dependencies]
 

@@ -6,7 +6,6 @@
 //! Compatibility layer for legacy (v0) evidence format conversion.
 
 use anyhow::{Context, Result};
-use az_snp_vtpm::vtpm::Quote;
 use openssl::x509::X509;
 use serde::de::Error as SerdeError;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -30,6 +29,17 @@ impl<'a, const V: u32> Deserialize<'a> for VersionCheck<V> {
         }
         Ok(VersionCheck)
     }
+}
+
+/// vTPM quote as emitted by the `az-snp-vtpm` attester's `vtpm::Quote`. Field
+/// names and types must stay as they are: v0 evidence is serialized with a
+/// plain derive, so `pcrs` is a JSON array of 24 32-element byte arrays and
+/// the two `Vec<u8>` fields are arrays of integers.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub(super) struct Quote {
+    signature: Vec<u8>,
+    message: Vec<u8>,
+    pcrs: Vec<[u8; 32]>,
 }
 
 /// Legacy evidence format (v0) - no version field
@@ -95,12 +105,10 @@ pub(crate) struct TpmQuote {
 
 impl From<Quote> for TpmQuote {
     fn from(quote: Quote) -> Self {
-        let pcrs = quote.pcrs_sha256().map(|p| p.to_vec()).collect();
-
         TpmQuote {
-            signature: quote.signature(),
-            message: quote.message(),
-            pcrs,
+            signature: quote.signature,
+            message: quote.message,
+            pcrs: quote.pcrs.iter().map(|p| p.to_vec()).collect(),
         }
     }
 }

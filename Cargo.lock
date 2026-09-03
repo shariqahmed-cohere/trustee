@@ -1212,7 +1212,6 @@ checksum = "2d3d6071c96b6306e616d98ff18b8f13de2b55f16f494094f16e22f26d985311"
 dependencies = [
  "az-cvm-vtpm",
  "clap",
- "openssl",
  "serde",
  "sev 7.1.0",
  "thiserror 2.0.20",
@@ -2377,7 +2376,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b"
 dependencies = [
  "const-oid 0.10.2",
- "pem-rfc7468 1.0.0",
  "zeroize",
 ]
 
@@ -8138,6 +8136,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
+name = "tpm2-protocol"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "526c9d0336fdf0d63182d3d84aa57d21b7da65e9a6d179b5515f7377da614da6"
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8393,16 +8397,12 @@ checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
 dependencies = [
  "base64 0.22.1",
  "cookie_store",
- "der 0.8.0",
  "log",
- "native-tls",
  "percent-encoding",
- "rustls-pki-types",
  "serde",
  "serde_json",
  "ureq-proto",
  "utf8-zero",
- "webpki-root-certs",
 ]
 
 [[package]]
@@ -8523,7 +8523,6 @@ dependencies = [
  "assert-json-diff",
  "async-trait",
  "az-cvm-vtpm",
- "az-snp-vtpm",
  "az-tdx-vtpm",
  "base64 0.23.1",
  "bitflags 2.13.1",
@@ -8559,6 +8558,7 @@ dependencies = [
  "thiserror 2.0.20",
  "time",
  "tokio",
+ "tpm2-protocol",
  "tracing",
  "tracing-subscriber",
  "tss-esapi",

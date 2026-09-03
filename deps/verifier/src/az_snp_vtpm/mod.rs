@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+pub(crate) mod certs;
 pub(crate) mod compat;
 
+use self::certs::{AmdChain, Vcek};
 use self::compat::Evidence;
 use super::{TeeClass, TeeEvidence, TeeEvidenceParsedClaim, Verifier};
 use crate::snp::{
@@ -14,10 +16,7 @@ use crate::snp::{
 use crate::{InitDataHash, ReportData};
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
-use az_snp_vtpm::certs::{AmdChain, Vcek};
-use az_snp_vtpm::hcl::HclReport;
-use az_snp_vtpm::report::AttestationReport;
-use az_snp_vtpm::vtpm::QuoteError;
+use az_cvm_vtpm::hcl::HclReport;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 pub(crate) use compat::TpmQuote;
@@ -29,11 +28,14 @@ use openssl::x509::X509;
 use openssl::{ec::EcKey, ecdsa, sha::sha384};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sev::firmware::guest::AttestationReport;
 use sev::parser::ByteParser;
 use thiserror::Error;
+use tpm2_protocol::data::{
+    Tpm2bDigest, TpmlPcrSelection, TpmsAttest, TpmsAttestView, TpmuAttestView,
+};
+use tpm2_protocol::TpmField;
 use tracing::{debug, instrument, warn};
-use tss_esapi::structures::{Attest, AttestInfo};
-use tss_esapi::traits::UnMarshall;
 use x509_parser::prelude::*;
 
 const HCL_VMPL_VALUE: u32 = 0;
@@ -80,8 +82,6 @@ pub enum CertError {
     #[error("VMPL of SNP report is not {0}")]
     VmplIncorrect(u32),
     #[error(transparent)]
-    Quote(#[from] QuoteError),
-    #[error(transparent)]
     JsonWebkey(#[from] jsonwebkey::ConversionError),
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
@@ -107,9 +107,37 @@ pub(crate) fn extend_claim(claim: &mut TeeEvidenceParsedClaim, tpm_quote: &TpmQu
     Ok(())
 }
 
+/// Parse a quote message as a `TPMS_ATTEST`. The cast rejects any structure
+/// whose leading magic is not `TPM_GENERATED_VALUE`, i.e. one the TPM did not
+/// produce itself.
+fn parse_attest(message: &[u8]) -> Result<TpmsAttestView<'_>> {
+    let (attest, _) = TpmsAttest::cast_prefix_field(message)
+        .map_err(|e| anyhow!("Failed to parse TPM quote message: {e:?}"))?;
+    Ok(attest)
+}
+
 fn extract_nonce(message: &[u8]) -> Result<Vec<u8>> {
-    let attest = Attest::unmarshall(message).context("Failed to parse TPM quote message")?;
-    Ok(attest.extra_data().to_vec())
+    Ok(parse_attest(message)?.extra_data.data().to_vec())
+}
+
+/// The `pcrDigest` the TPM signed over, read out of the quote's
+/// `TPMS_QUOTE_INFO`.
+///
+/// The body is walked field by field rather than through the generated
+/// accessors: those require a field's borrowed view to be a reference to the
+/// field type itself, which does not hold for the TPM2B and TPML types here.
+fn quoted_pcr_digest(message: &[u8]) -> Result<Vec<u8>> {
+    let attest = parse_attest(message)?;
+    let TpmuAttestView::Quote(info) = attest.attested else {
+        bail!("TPM attestation is not a quote");
+    };
+
+    let (_pcr_select, rest) = TpmlPcrSelection::cast_prefix_field(info.as_bytes())
+        .map_err(|e| anyhow!("Failed to parse quoted PCR selection: {e:?}"))?;
+    let (pcr_digest, _) = Tpm2bDigest::cast_prefix_field(rest)
+        .map_err(|e| anyhow!("Failed to parse quoted PCR digest: {e:?}"))?;
+
+    Ok(pcr_digest.data().to_vec())
 }
 
 /// Decode and verify the AAEL runtime eventlog against `tpm_quote` (if
@@ -306,11 +334,7 @@ pub(crate) fn verify_tpm_signature(tpm_quote: &TpmQuote, hcl_report: &HclReport)
 }
 
 pub(crate) fn verify_tpm_pcrs(tpm_quote: &TpmQuote) -> Result<()> {
-    let attest = Attest::unmarshall(&tpm_quote.message).context("Failed to parse TPM message")?;
-    let AttestInfo::Quote { info } = attest.attested() else {
-        bail!("TPM attestation is not a quote");
-    };
-    let expected_digest = info.pcr_digest();
+    let expected_digest = quoted_pcr_digest(&tpm_quote.message)?;
 
     let mut hasher = openssl::sha::Sha256::new();
     for pcr in &tpm_quote.pcrs {
